@@ -4,6 +4,7 @@ import "@openzeppelin/contracts/access/Ownable2Step.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/utils/Pausable.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 contract CyberFinance is Ownable2Step, ReentrancyGuard, Pausable {
 
@@ -26,22 +27,33 @@ contract CyberFinance is Ownable2Step, ReentrancyGuard, Pausable {
         _unpause();
     }
 
-    function withdraw(address rewardToken, uint256 amount) public onlyOwner nonReentrant {
-        require(IERC20(rewardToken).balanceOf(address(this)) >= amount, "Insufficient contract balance");
-        bool success = IERC20(rewardToken).transfer(owner(), amount);
-        require(success, "Token transfer failed");
-        emit Withdraw(owner(), rewardToken, amount);
+    function transferOwnership(address newOwner) public override onlyOwner whenNotPaused {
+        super.transferOwnership(newOwner);
     }
 
-    function withdrawBalance(address rewardToken) public onlyOwner {
-        withdraw(rewardToken, IERC20(rewardToken).balanceOf(address(this)));
+    function acceptOwnership() public override whenNotPaused {
+        super.acceptOwnership();
+    }
+
+    function withdraw(address rewardToken, uint256 amount) external onlyOwner nonReentrant {
+        _withdraw(rewardToken, amount);
+    }
+
+    function withdrawBalance(address rewardToken) external onlyOwner nonReentrant {
+        _withdraw(rewardToken, IERC20(rewardToken).balanceOf(address(this)));
+    }
+
+    function _withdraw(address rewardToken, uint256 amount) internal {
+        require(IERC20(rewardToken).balanceOf(address(this)) >= amount, "Insufficient contract balance");
+        SafeERC20.safeTransfer(IERC20(rewardToken), owner(), amount);
+        emit Withdraw(owner(), rewardToken, amount);
     }
 
     function increaseClaimable(
         address claimer,
         address rewardToken,
         uint256 rewardAmount
-    ) public onlyOwner {
+    ) external onlyOwner {
         claimableBalances[claimer][rewardToken] += rewardAmount;
         emit IncreaseClaimable(claimer, rewardToken, rewardAmount);
     }
@@ -50,7 +62,7 @@ contract CyberFinance is Ownable2Step, ReentrancyGuard, Pausable {
         address claimer,
         address rewardToken,
         uint256 rewardAmount
-    ) public onlyOwner {
+    ) external onlyOwner {
         uint256 amount = rewardAmount;
         uint256 claimableBalance = claimableBalances[claimer][rewardToken];
         require(claimableBalance > 0, "Balance is 0");
@@ -61,15 +73,20 @@ contract CyberFinance is Ownable2Step, ReentrancyGuard, Pausable {
         emit DecreaseClaimable(claimer, rewardToken, amount);
     }
 
-    function claim(address rewardToken) public nonReentrant whenNotPaused {
+    function claim(address rewardToken) external nonReentrant whenNotPaused {
         uint256 claimableBalance = claimableBalances[_msgSender()][rewardToken];
         require(claimableBalance > 0, "Nothing to claim");
-        require(IERC20(rewardToken).balanceOf(address(this)) >= claimableBalance, "Insufficient contract balance");
 
-        claimableBalances[_msgSender()][rewardToken] = 0;
+        uint256 contractBalance = IERC20(rewardToken).balanceOf(address(this));
+        require(contractBalance > 0, "Insufficient contract balance");
 
-        bool success = IERC20(rewardToken).transfer(_msgSender(), claimableBalance);
-        require(success, "Token transfer failed");
+        if (contractBalance < claimableBalance) {
+            claimableBalance = contractBalance;
+        }
+
+        claimableBalances[_msgSender()][rewardToken] -= claimableBalance;
+
+        SafeERC20.safeTransfer(IERC20(rewardToken), _msgSender(), claimableBalance);
 
         emit Claim(_msgSender(), rewardToken, claimableBalance);
     }

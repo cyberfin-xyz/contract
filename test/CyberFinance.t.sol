@@ -73,7 +73,7 @@ contract CyberFinanceTest is Test {
         uint256 before_ownerBalance = TOKEN.balanceOf(OWNER);
 
         vm.startPrank(OWNER);
-        vm.expectRevert("Token transfer failed");
+        vm.expectRevert();
         cyberFinance.withdraw(address(FALSE_TOKEN), amount);
         vm.stopPrank();
 
@@ -186,6 +186,9 @@ contract CyberFinanceTest is Test {
         uint256 before_contractBalance = TOKEN.balanceOf(address(cyberFinance));
         uint256 before_claimerBalance = TOKEN.balanceOf(CLAIMER);
 
+        vm.expectEmit();
+        emit Claim(CLAIMER, address(TOKEN), amount);
+
         vm.startPrank(CLAIMER);
         cyberFinance.claim(address(TOKEN));
         vm.stopPrank();
@@ -254,7 +257,7 @@ contract CyberFinanceTest is Test {
         uint256 before_contractBalance = FALSE_TOKEN.balanceOf(address(cyberFinance));
         uint256 before_claimerBalance = FALSE_TOKEN.balanceOf(CLAIMER);
 
-        vm.expectRevert("Token transfer failed");
+        vm.expectRevert();
 
         vm.startPrank(CLAIMER);
         cyberFinance.claim(address(FALSE_TOKEN));
